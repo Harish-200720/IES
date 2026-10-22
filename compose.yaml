@@ -1,0 +1,113 @@
+name: ies-local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ies}
+      POSTGRES_USER: ${POSTGRES_USER:-ies_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["ies-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt: ["no-new-privileges:true"]
+
+  api:
+    build:
+      context: ./backend
+      target: api
+    image: ies-api:local
+    restart: unless-stopped
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${POSTGRES_DB:-ies}
+      DATABASE_USERNAME: ${POSTGRES_USER:-ies_app}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      IES_STORAGE_ROOT: /var/lib/ies/invoices
+      IES_ALLOWED_ORIGINS: ${IES_ALLOWED_ORIGINS:-http://localhost:8088}
+      IES_AUTH_ENABLED: ${IES_AUTH_ENABLED:-false}
+      JWT_ISSUER_URI: ${JWT_ISSUER_URI:-}
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: ["ies-invoices:/var/lib/ies/invoices"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/actuator/health/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    security_opt: ["no-new-privileges:true"]
+
+  processor:
+    build:
+      context: ./backend
+      target: processor
+    image: ies-processor:local
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${POSTGRES_DB:-ies}
+      DATABASE_USERNAME: ${POSTGRES_USER:-ies_app}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      IES_STORAGE_ROOT: /var/lib/ies/invoices
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_THINKING_BUDGET: ${GEMINI_THINKING_BUDGET:-0}
+      IES_MIN_FIELD_CONFIDENCE: ${IES_MIN_FIELD_CONFIDENCE:-0.70}
+      IES_PROCESSOR_CONCURRENCY: ${IES_PROCESSOR_CONCURRENCY:-6}
+      IES_AI_TIMEOUT_MS: ${IES_AI_TIMEOUT_MS:-60000}
+      IES_PROCESSOR_LEASE_SECONDS: ${IES_PROCESSOR_LEASE_SECONDS:-180}
+      IES_PROCESSOR_POLL_MS: ${IES_PROCESSOR_POLL_MS:-500}
+    ports: ["127.0.0.1:8081:8081"]
+    volumes: ["ies-invoices:/var/lib/ies/invoices"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    security_opt: ["no-new-privileges:true"]
+
+  web:
+    build:
+      context: ./frontend
+    image: ies-web:local
+    restart: unless-stopped
+    ports: ["127.0.0.1:8088:8080"]
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/cache/nginx:size=32m,uid=101,gid=101
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  ies-postgres:
+  ies-invoices:

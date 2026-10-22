@@ -1,0 +1,56 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.iml
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/node_modules/
+backend/dist/
+.pnpm-store/
+*.tsbuildinfo
+
+# Python
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+*.py[cod]
+
+# Runtime data - invoice documents and extracted PII must never enter Git
+data/
+storage/
+uploads/
+models/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.jsonl
+
+# Local databases, logs, reports and QA output
+*.db
+*.sqlite*
+*.log
+logs/
+coverage/
+reports/generated/
+.docx_qa/

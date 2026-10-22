@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+      - name: Verify Node microservices and PostgreSQL migrations
+        working-directory: backend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm verify
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install and build
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+  deployment-config:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-placeholder-not-a-secret
+      GEMINI_API_KEY: ci-placeholder-not-a-secret
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate Docker Compose topology
+        run: docker compose config --quiet
+      - name: Build API container image
+        run: docker build --target api --tag ies-api:ci ./backend
+      - name: Build processor container image
+        run: docker build --target processor --tag ies-processor:ci ./backend
+      - name: Build web container image
+        run: docker build --tag ies-web:ci ./frontend
